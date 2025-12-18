@@ -1,0 +1,94 @@
+openapi: 3.0.1
+info:
+  title: MITRE ATT&CK Mapping Agent API
+  version: "1.0.0"
+  description: >
+    APIs for fetching Microsoft Sentinel analytic rules without MITRE mappings
+    and classifying them using Gemini AI.
+
+servers:
+  - url: https://mitreattackmappingagent.azurewebsites.net/api
+
+paths:
+
+  /sentinel/rules/without-mitre:
+    get:
+      operationId: GetUnmappedSentinelRule
+      summary: Fetch the next Sentinel rule without MITRE mapping
+      description: >
+        Returns ONE deterministic analytic rule that does not have MITRE techniques.
+        The rule selected is the oldest un-mapped rule by lastModifiedUtc.
+      responses:
+        "200":
+          description: Sentinel rule without MITRE
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ruleId:
+                    type: string
+                  displayName:
+                    type: string
+                  description:
+                    type: string
+                  query:
+                    type: string
+                  tactics:
+                    type: array
+                    items:
+                      type: string
+                  techniques:
+                    type: array
+                    items:
+                      type: string
+                  lastModifiedUtc:
+                    type: string
+
+  /mitre/classify:
+    post:
+      operationId: ClassifyMitreRule
+      summary: Classify MITRE ATT&CK mapping using Gemini
+      description: >
+        Uses Gemini AI to determine the most accurate MITRE ATT&CK tactics
+        and techniques for a Sentinel analytic rule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Minimal Sentinel rule payload
+              properties:
+                displayName:
+                  type: string
+                description:
+                  type: string
+                query:
+                  type: string
+                tactics:
+                  type: array
+                  items:
+                    type: string
+                techniques:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: MITRE classification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tactics:
+                    type: array
+                    items:
+                      type: string
+                  techniques:
+                    type: array
+                    items:
+                      type: string
+                  confidence:
+                    type: number
