@@ -1,15 +1,64 @@
 openapi: 3.0.1
 info:
   title: MITRE ATT&CK Mapping Agent API
-  version: "1.0.0"
+  version: "1.1.0"
   description: >
-    APIs for fetching Microsoft Sentinel analytic rules without MITRE mappings
-    and classifying them using Gemini AI.
+    APIs for fetching Microsoft Sentinel analytic rules and
+    classifying them with MITRE ATT&CK using AI.
 
 servers:
   - url: https://mitreattackmappingagent.azurewebsites.net/api
 
 paths:
+
+  /sentinel/rules/all:
+    get:
+      operationId: GetAllSentinelRules
+      summary: Fetch all Sentinel analytic rules
+      description: >
+        Returns all Microsoft Sentinel analytic rules with
+        normalized fields for analysis and MITRE mapping.
+      responses:
+        "200":
+          description: List of Sentinel analytic rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of rules returned
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ruleId:
+                          type: string
+                        displayName:
+                          type: string
+                        description:
+                          type: string
+                        severity:
+                          type: string
+                        enabled:
+                          type: boolean
+                        tactics:
+                          type: array
+                          items:
+                            type: string
+                        techniques:
+                          type: array
+                          items:
+                            type: string
+                        query:
+                          type: string
+                        lastModifiedUtc:
+                          type: string
+                          format: date-time
+                        kind:
+                          type: string
 
   /sentinel/rules/without-mitre:
     get:
@@ -44,6 +93,7 @@ paths:
                       type: string
                   lastModifiedUtc:
                     type: string
+                    format: date-time
 
   /mitre/classify:
     post:
