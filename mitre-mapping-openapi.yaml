@@ -13,17 +13,21 @@ paths:
   /sentinel/rules/all:
     get:
       operationId: getAllSentinelRules
-      summary: Fetch Sentinel analytic rules in paginated batches
+      summary: Fetch Microsoft Sentinel analytic rules using deterministic pagination
       description: >
         Retrieves Microsoft Sentinel analytic rules from the specified workspace
-        in paginated batches to avoid response size and execution limits.
-        Use the skip and top parameters to fetch rules incrementally.
+        using deterministic pagination. Clients must start with skip=0 and use
+        the nextSkip value returned in each response to fetch subsequent batches.
+        Reusing the same skip value across requests will result in duplicate data.
 
       parameters:
         - name: skip
           in: query
           required: false
-          description: Number of rules to skip before starting to return results.
+          description: >
+            Number of analytic rules to skip before starting to return results.
+            Must be set to 0 for the initial request. For subsequent requests,
+            this value must be taken from the nextSkip field of the previous response.
           schema:
             type: integer
             minimum: 0
@@ -32,7 +36,9 @@ paths:
         - name: top
           in: query
           required: false
-          description: Number of rules to return in the current batch.
+          description: >
+            Number of analytic rules to return in the current batch.
+            Recommended value is 25 to avoid response size limits.
           schema:
             type: integer
             minimum: 1
@@ -41,61 +47,89 @@ paths:
 
       responses:
         "200":
-          description: Paginated list of Sentinel analytic rules
+          description: Paginated batch of Sentinel analytic rules
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - totalRules
+                  - returned
+                  - skip
+                  - top
+                  - nextSkip
+                  - rules
                 properties:
                   totalRules:
                     type: integer
-                    description: Total number of analytic rules in the workspace
+                    description: Total number of analytic rules in the workspace.
+
                   returned:
                     type: integer
-                    description: Number of rules returned in this batch
+                    description: Number of rules returned in this batch.
+
                   skip:
                     type: integer
-                    description: Number of rules skipped
+                    description: Number of rules skipped in this request.
+
                   top:
                     type: integer
-                    description: Batch size requested
+                    description: Batch size requested.
+
                   nextSkip:
                     type: integer
                     nullable: true
                     description: >
-                      Value to be used as skip for the next request.
-                      Null indicates there are no more rules.
+                      Value to be used as the skip parameter for the next request.
+                      If null, no additional rules are available and pagination must stop.
+
                   rules:
                     type: array
+                    description: List of Sentinel analytic rules in the current batch.
                     items:
                       type: object
+                      required:
+                        - ruleId
+                        - displayName
                       properties:
                         ruleId:
                           type: string
-                          description: Unique identifier of the analytic rule
+                          description: Unique identifier of the analytic rule.
+
                         displayName:
                           type: string
+                          description: Display name of the analytic rule.
+
                         severity:
                           type: string
                           enum: [Low, Medium, High, Informational]
+
                         enabled:
                           type: boolean
+
                         tactics:
                           type: array
                           items:
                             type: string
+
                         techniques:
                           type: array
                           items:
                             type: string
+
                         lastModifiedUtc:
                           type: string
                           format: date-time
+
                         kind:
                           type: string
+                          description: Type of analytic rule (Scheduled, Fusion, etc.)
+
+        "400":
+          description: Invalid pagination parameters supplied.
 
         "500":
-          description: Server error while fetching Sentinel rules
+          description: Server error while fetching Sentinel analytic rules.
 
   /sentinel/rules/without-mitre:
     get:
