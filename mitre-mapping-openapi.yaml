@@ -1,10 +1,11 @@
 openapi: 3.0.1
 info:
   title: MITRE ATT&CK Mapping Agent API
-  version: "1.1.0"
+  version: "1.2.0"
   description: >
     APIs for fetching Microsoft Sentinel analytic rules and
-    classifying them with MITRE ATT&CK using AI.
+    classifying them with MITRE ATT&CK using AI, including updating
+    MITRE mappings (tactics/techniques) back to Sentinel analytic rules.
 
 servers:
   - url: https://mitreattackmappingagent.azurewebsites.net/api
@@ -19,7 +20,6 @@ paths:
         using deterministic pagination. Clients must start with skip=0 and use
         the nextSkip value returned in each response to fetch subsequent batches.
         Reusing the same skip value across requests will result in duplicate data.
-
       parameters:
         - name: skip
           in: query
@@ -32,7 +32,6 @@ paths:
             type: integer
             minimum: 0
             default: 0
-
         - name: top
           in: query
           required: false
@@ -44,7 +43,6 @@ paths:
             minimum: 1
             maximum: 50
             default: 25
-
       responses:
         "200":
           description: Paginated batch of Sentinel analytic rules
@@ -52,84 +50,70 @@ paths:
             application/json:
               schema:
                 type: object
-                required:
-                  - totalRules
-                  - returned
-                  - skip
-                  - top
-                  - nextSkip
-                  - rules
+                required: [totalRules, returned, skip, top, nextSkip, rules]
                 properties:
                   totalRules:
                     type: integer
                     description: Total number of analytic rules in the workspace.
-
                   returned:
                     type: integer
                     description: Number of rules returned in this batch.
-
                   skip:
                     type: integer
                     description: Number of rules skipped in this request.
-
                   top:
                     type: integer
                     description: Batch size requested.
-
                   nextSkip:
                     type: integer
                     nullable: true
                     description: >
                       Value to be used as the skip parameter for the next request.
                       If null, no additional rules are available and pagination must stop.
-
                   rules:
                     type: array
                     description: List of Sentinel analytic rules in the current batch.
                     items:
                       type: object
-                      required:
-                        - ruleId
-                        - displayName
+                      required: [ruleId, displayName]
                       properties:
                         ruleId:
                           type: string
                           description: Unique identifier of the analytic rule.
-
                         displayName:
                           type: string
                           description: Display name of the analytic rule.
-
                         severity:
                           type: string
                           enum: [Low, Medium, High, Informational]
-
                         enabled:
                           type: boolean
-
                         tactics:
                           type: array
                           items:
                             type: string
-
                         techniques:
                           type: array
                           items:
                             type: string
-
                         lastModifiedUtc:
                           type: string
                           format: date-time
-
                         kind:
                           type: string
                           description: Type of analytic rule (Scheduled, Fusion, etc.)
-
         "400":
           description: Invalid pagination parameters supplied.
-
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error while fetching Sentinel analytic rules.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /sentinel/rules/without-mitre:
     get:
@@ -165,6 +149,18 @@ paths:
                   lastModifiedUtc:
                     type: string
                     format: date-time
+        "404":
+          description: No unmapped rules found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error while fetching unmapped rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /mitre/classify:
     post:
@@ -213,3 +209,139 @@ paths:
                       type: string
                   confidence:
                     type: number
+        "400":
+          description: Invalid input payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error during classification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sentinel/rules/update-mitre:
+    post:
+      operationId: updateSentinelRuleMitre
+      summary: Update MITRE ATT&CK tactics and techniques on a Sentinel analytic rule
+      description: >
+        Updates ONLY the MITRE mapping fields (tactics and techniques) on an existing
+        Microsoft Sentinel analytic rule. The service fetches the current rule, applies the
+        provided tactics/techniques, removes read-only properties (e.g., lastModifiedUtc),
+        and writes the update back to Sentinel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMitreRequest"
+            examples:
+              example1:
+                summary: Update tactics and techniques
+                value:
+                  ruleId: "f0d22899-39ed-4c9f-9b30-60243f9c6e03"
+                  tactics: ["Persistence", "PrivilegeEscalation"]
+                  techniques: ["T1078"]
+      responses:
+        "200":
+          description: Rule updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateMitreResponse"
+        "400":
+          description: Invalid request payload (missing ruleId, invalid arrays, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized (token generation/authorization failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (caller lacks Sentinel permissions)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Rule not found (invalid ruleId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "412":
+          description: Precondition failed (ETag mismatch due to concurrent modification)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error while updating the rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    UpdateMitreRequest:
+      type: object
+      required: [ruleId]
+      properties:
+        ruleId:
+          type: string
+          description: Sentinel analytic rule ID (GUID or rule resource name).
+        tactics:
+          type: array
+          description: MITRE ATT&CK tactics to set on the rule.
+          items:
+            type: string
+        techniques:
+          type: array
+          description: MITRE ATT&CK techniques to set on the rule (e.g., T1078).
+          items:
+            type: string
+
+    UpdateMitreResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: updated
+        ruleId:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        kind:
+          type: string
+          nullable: true
+          description: Type of analytic rule (Scheduled, Fusion, etc.)
+        tactics:
+          type: array
+          items:
+            type: string
+        techniques:
+          type: array
+          items:
+            type: string
+        etag:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: High-level error message.
+        details:
+          type: object
+          nullable: true
+          description: Optional nested error details (often from Azure REST/ARM).
